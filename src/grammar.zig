@@ -26,6 +26,10 @@ pub const Rule = struct {
 pub const RuleSet = struct {
     const RuleMap = HashMap([]const u8, Rule, mem.hash_slice_u8, mem.eql_slice_u8);
 
+    const ErrorSet = error {
+        RuleDoesNotExist,
+    };
+
     arena: ArenaAllocator,
     map: RuleMap,
 
@@ -41,9 +45,20 @@ pub const RuleSet = struct {
         self.arena.deinit();
     }
 
-    pub fn put(self: *RuleSet, name: []const u8) !void {
+    pub fn put(self: *RuleSet, name: []const u8) !*Rule {
         var rule = try Rule.init(&self.arena.allocator, name);
+        std.debug.warn("put: {}\n", rule.name.toSliceConst());
         _ = try self.map.put(rule.name.toSliceConst(), rule);
+        var entry = ??self.map.get(name);
+        return &entry.value;
+    }
+
+    pub fn get(self: *RuleSet, name: []const u8) !*Rule {
+        var rule_entry = self.map.get(name);
+        if (rule_entry == null) {
+            return RuleSet.ErrorSet.RuleDoesNotExist;
+        }
+        return &(??rule_entry).value;
     }
 };
 
@@ -51,9 +66,7 @@ test "init" {
     var rule_set = RuleSet.init(std.debug.global_allocator);
     defer rule_set.deinit();
 
-    try rule_set.put("S");
-    var rule_entry = ??rule_set.map.get("S");
-    var rule = rule_entry.value;
+    var rule = try rule_set.put("S");
     try rule.append("a");
     try rule.append("b");
 }

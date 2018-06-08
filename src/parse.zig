@@ -16,13 +16,7 @@ pub fn parseInputFile(allocator: *Allocator, path: []const u8) !void {
     var adapter = FileInStream.init(&file);
     var parser = Parser.init(allocator, &adapter);
     defer parser.deinit();
-    var token = try parser.tokenizer.nextToken();
-    while (token.kind != Token.Kind.EndOfFile) {
-        std.debug.warn("token: {} \"{}\"\n", @tagName(token.kind), if (!token.buffer.isNull() and token.buffer.len() > 0) token.buffer.toSliceConst() else "");
-        token.deinit();
-        token = try parser.tokenizer.nextToken();
-    }
-    token.deinit();
+    try parser.parse();
 }
 
 const Token = struct {
@@ -48,10 +42,6 @@ const Token = struct {
 
     pub fn deinit(self: *Token) void {
         self.buffer.deinit();
-    }
-
-    pub fn setBuffer(self: *Token, buffer: *Buffer) !void {
-        self.buffer = try Buffer.fromOwnedSlice(self.buffer.list.allocator, buffer.toOwnedSlice());
     }
 };
 
@@ -137,24 +127,50 @@ const Tokenizer = struct {
 };
 
 const Parser = struct {
+    const ErrorSet = error {
+        InvalidRuleStart,
+    };
+
     tokenizer: Tokenizer,
     rule_set: grammar.RuleSet,
+    token: Token,
 
     pub fn init(alloc: *Allocator, in: *FileInStream) Parser {
         return Parser{
             .tokenizer = Tokenizer.init(alloc, in),
             .rule_set = grammar.RuleSet.init(alloc),
+            .token = Token.init(alloc),
         };
     }
 
     pub fn deinit(self: *Parser) void {
         self.tokenizer.deinit();
         self.rule_set.deinit();
+        self.token.deinit();
     }
 
-    pub fn parse(self: *Parser) !grammar.RuleSet {
+    fn consume(self: *Parser) !void {
+        var next = try self.tokenizer.nextToken();
+        self.token.deinit();
+        self.token = next;
+        std.debug.warn("test\n");
+    }
+
+    pub fn parse(self: *Parser) !void {
+        try self.consume();
+        while (self.token.kind != Token.Kind.EndOfFile) {
+            std.debug.assert(self.token.kind != Token.Kind.Invalid);
+            try self.parseRule();
+        }
+    }
+
+    fn parseRule(self: *Parser) !void {
+        if (self.token.kind != Token.Kind.Symbol) {
+            return Parser.ErrorSet.InvalidRuleStart;
+        }
+        std.debug.warn("rule name: {}\n", self.token.buffer.toSliceConst());
+        var rule = try self.rule_set.put(self.token.buffer.toSliceConst());
         // TODO
-        return error.InvalidChar;
     }
 };
 
