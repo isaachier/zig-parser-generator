@@ -11,28 +11,36 @@ const File = os.File;
 const FileInStream = io.FileInStream;
 const HashMap = std.HashMap;
 
-const Rule = struct {
+const Production = struct {
     name: []const u8,
-    tokens: ArrayList(Token),
+    symbols: ArrayList([]const u8),
 
-    pub fn init(allocator: *Allocator, name: []const u8) Rule {
-        return Rule{
+    pub fn init(allocator: *Allocator, name: []const u8) Production {
+        return Production{
             .name = name,
-            .tokens = ArrayList(Token).init(allocator),
+            .symbols = ArrayList([]const u8).init(allocator),
         };
     }
 
-    pub fn deinit(self: *Rule) void {
-        self.tokens.deinit();
+    pub fn deinit(self: *Production) void {
+        self.symbols.deinit();
     }
 
-    pub fn append(self: *Rule, token: *const Token) !void {
-        try self.tokens.append(token);
+    pub fn append(self: *Production, symbol: []const u8) !void {
+        try self.symbols.append(symbol);
     }
 };
 
 const RuleSet = struct {
-    const RuleMap = HashMap([]const u8, ArrayList(Rule), mem.hash_slice_u8, mem.eql_slice_u8);
+    /// EBNF allows merging of multiple rules. For example,
+    /// ```
+    /// E = B
+    /// E = E * B
+    /// ```
+    /// is equivalent to `E = B | E * B`. Therefore, the rule map must be able to maintain
+    /// multiple productions for the same symbol. That is the reason the map is from rule name to
+    /// an ArrayList of corresponding rules.
+    const RuleMap = HashMap([]const u8, []Production, mem.hash_slice_u8, mem.eql_slice_u8);
 
     const ErrorSet = error {
         RuleDoesNotExist,
@@ -49,36 +57,26 @@ const RuleSet = struct {
     pub fn deinit(self: *RuleSet) void {
         var it = self.map.iterator();
         while (it.next()) |next| {
-            next.value.deinit();
+            self.map.allocator.free(next.value);
         }
         self.map.deinit();
     }
 
-    pub fn put(self: *RuleSet, name: []const u8) !*ArrayList(Rule) {
-        _ = try self.map.put(name, ArrayList(Rule).init(self.map.allocator));
-        var entry = self.map.get(name).?;
-        return &entry.value;
+    pub fn put(self: *RuleSet, name: []const u8, productions: []Production) !void {
+        if (!self.map.contains(name)) {
+            const old_entry = try self.map.put(name, productions);
+            debug.assert(old_entry == null);
+        }
     }
 
-    pub fn get(self: *RuleSet, name: []const u8) !*ArrayList(Rule) {
+    pub fn get(self: *RuleSet, name: []const u8) ![]const Production {
         var rule_entry = self.map.get(name);
         if (rule_entry == null) {
             return RuleSet.ErrorSet.RuleDoesNotExist;
         }
-        return &(rule_entry.?).value;
+        return (rule_entry.?).value;
     }
 };
-
-test "rule set initialization" {
-    var rule_set = RuleSet.init(std.debug.global_allocator);
-    defer rule_set.deinit();
-
-    var rules = try rule_set.put("S");
-    try rules.append(Rule.init(rule_set.map.allocator, "S"));
-    var rule = &rules.items[0];
-    try rule.append(Token.init(0, 0));
-    try rule.append(Token.init(0, 0));
-}
 
 const Token = struct {
     pub const Id = enum {
@@ -103,6 +101,7 @@ const Token = struct {
     }
 
     pub fn slice(self: *const Token, input: []const u8) []const u8 {
+        debug.assert(self.pos + self.len <= input.len);
         return input[self.pos .. self.pos + self.len];
     }
 };
@@ -205,9 +204,9 @@ const Parser = struct {
             return Parser.ErrorSet.InvalidRuleStart;
         }
         const name = self.token.slice(self.token_stream.input);
-        var rules = try self.rule_set.put(name);
-        try rules.append(Rule.init(self.rule_set.map.allocator, name));
-        var rule = &rules.items[0];
+        var productions = ArrayList(Production).init(self.rule_set.map.allocator);
+        defer productions.deinit();
+        var production = Production.init(self.rule_set.map.allocator, name);
 
         self.consume();
         if (self.token.id != Token.Id.Equal) {
@@ -217,14 +216,17 @@ const Parser = struct {
         self.consume();
         while (true) : (self.consume()) {
             switch (self.token.id) {
-                Token.Id.EndOfRule => return,
-                Token.Id.Invalid => return,
-                Token.Id.Symbol => try rule.append(self.token),
-                Token.Id.String => try rule.append(self.token),
+                Token.Id.Symbol, Token.Id.String =>
+                    try production.append(self.token.slice(self.token_stream.input)),
                 Token.Id.Or => {
-                    try rules.append(Rule.init(self.rule_set.map.allocator, name));
-                    rule = &rules.items[rules.len - 1];
+                    try productions.append(production);
+                    production = Production.init(self.rule_set.map.allocator, name);
                 },
+                Token.Id.EndOfRule => {
+                    try productions.append(production);
+                    try self.rule_set.put(name, productions.toOwnedSlice());
+                },
+                Token.Id.Invalid => return,
                 else => return ErrorSet.InvalidToken,
             }
         }
@@ -233,12 +235,12 @@ const Parser = struct {
 
 test "parse input" {
     const input =
-    \\ E = E "*" B | E "+" B | B | "0" | "1";
+    \\ E = E "*" B | E "+" B | B | "0" | "1" ;
     \\
     ;
     var parser = Parser.init(debug.global_allocator, input);
     defer parser.deinit();
     try parser.parse();
-    const rules = try parser.rule_set.get("E");
-    debug.assert(rules.len == 5);
+    const productions = try parser.rule_set.get("E");
+    debug.assert(productions.len == 5);
 }
