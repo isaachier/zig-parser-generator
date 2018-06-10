@@ -48,8 +48,9 @@ pub const RuleSet = struct {
     pub fn put(self: *RuleSet, name: []const u8) !*Rule {
         var rule = try Rule.init(&self.arena.allocator, name);
         std.debug.warn("put: {}\n", rule.name.toSliceConst());
+        std.debug.assert(self.map.allocator == &self.arena.allocator);
         _ = try self.map.put(rule.name.toSliceConst(), rule);
-        var entry = ??self.map.get(name);
+        var entry = self.map.get(name).?;
         return &entry.value;
     }
 
