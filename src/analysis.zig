@@ -23,7 +23,7 @@ pub const Item = struct {
         };
     }
 
-    const VisitedSet = std.HashMap(usize, bool, hashUSize, eqlUSize);
+    const VisitedSet = std.HashMap(usize, void, hashUSize, eqlUSize);
 
     const ErrorSet = error {
         OutOfMemory,
@@ -46,7 +46,7 @@ pub const Item = struct {
         }
 
         try items.append(self.*);
-        const old_entry = try visited.put(self.production.id, true);
+        const old_entry = try visited.put(self.production.id, {});
         std.debug.assert(old_entry == null);
 
         std.debug.assert(self.marker <= self.production.symbols.len);
