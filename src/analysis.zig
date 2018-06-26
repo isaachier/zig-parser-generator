@@ -12,13 +12,12 @@ fn eqlUSize(lhs: usize, rhs: usize) bool {
 }
 
 pub const Item = struct {
-    production: *const grammar.Production,
+    prod_id: usize,
     marker: usize,
 
-    pub fn init(production: *const grammar.Production, marker: usize) Item {
-        std.debug.assert(marker <= production.symbols.len);
+    pub fn init(prod_id: usize, marker: usize) Item {
         return Item{
-            .production = production,
+            .prod_id = prod_id,
             .marker = marker,
         };
     }
@@ -41,24 +40,27 @@ pub const Item = struct {
                          rule_set: *const grammar.RuleSet,
                          items: *std.ArrayList(Item),
                          visited: *VisitedSet) ErrorSet!void {
-        if (visited.contains(self.production.id)) {
+        if (visited.contains(self.prod_id)) {
             return;
         }
 
         try items.append(self.*);
-        const old_entry = try visited.put(self.production.id, {});
+
+        const prod = rule_set.prod_list.at(self.prod_id);
+        std.debug.assert(self.prod_id == prod.id);
+        const old_entry = try visited.put(self.prod_id, {});
         std.debug.assert(old_entry == null);
 
-        std.debug.assert(self.marker <= self.production.symbols.len);
-        if (self.marker == self.production.symbols.len) {
+        std.debug.assert(self.marker <= prod.symbols.len);
+        if (self.marker == prod.symbols.len) {
             return;
         }
 
-        const marked_symbol = self.production.symbols[self.marker];
-        const marked_rule = rule_set.get(marked_symbol) catch return;
+        const marked_symbol = prod.symbols[self.marker];
+        const marked_prods = rule_set.get(marked_symbol) catch return;
 
-        for (marked_rule.productions) |marked_production| {
-            const item = Item.init(marked_production, 0);
+        for (marked_prods) |marked_prod| {
+            const item = Item.init(marked_prod.id, 0);
             try item.findClosureHelper(rule_set, items, visited);
         }
     }

@@ -124,18 +124,20 @@ pub const Parser = struct {
         errdefer rule_set.deinit();
         self.consume();
         while (self.token.id != Token.Id.Invalid) {
-            var rule = try self.parseRule(rule_set.map.size);
+            var rule = try self.parseRule(rule_set.prod_list.len);
             errdefer rule.deinit();
-            try rule_set.put(rule);
+            try rule_set.put(&rule);
         }
         return rule_set;
     }
 
-    fn parseRule(self: *Parser, rule_set_size: usize) !grammar.Rule {
+    fn parseRule(self: *Parser, prod_list_len: usize) !grammar.Rule {
         if (self.token.id != Token.Id.Symbol) {
             return Parser.ErrorSet.InvalidRuleStart;
         }
         const name = self.token.slice(self.token_stream.input);
+        const name_copy = try std.mem.dupe(self.allocator, u8, name);
+        errdefer self.allocator.free(name_copy);
 
         self.consume();
         if (self.token.id != Token.Id.Equal) {
@@ -143,24 +145,24 @@ pub const Parser = struct {
         }
         self.consume();
 
-        var productions = std.ArrayList(grammar.Production).init(self.allocator);
-        defer productions.deinit();
+        var prods = std.ArrayList(grammar.Production).init(self.allocator);
+        defer prods.deinit();
         errdefer {
-            for (productions.toSlice()) |*production| {
-                production.deinit();
+            for (prods.toSlice()) |*prod| {
+                prod.deinit();
             }
-            productions.deinit();
+            prods.deinit();
         }
         while (self.token.id != Token.Id.EndOfRule) {
-            var production = try self.parseProduction(rule_set_size + productions.len);
-            errdefer production.deinit();
-            try productions.append(production);
+            var prod = try self.parseProduction(prod_list_len + prods.len, name_copy);
+            errdefer prod.deinit();
+            try prods.append(prod);
         }
         self.consume();
-        return grammar.Rule.init(self.allocator, name, productions.toOwnedSlice());
+        return grammar.Rule.init(self.allocator, name_copy, prods.toOwnedSlice());
     }
 
-    fn parseProduction(self: *Parser, production_id: usize) !grammar.Production {
+    fn parseProduction(self: *Parser, prod_id: usize, rule_name: []const u8) !grammar.Production {
         var symbols = std.ArrayList([]const u8).init(self.allocator);
         errdefer symbols.deinit();
         while (true) {
@@ -175,7 +177,8 @@ pub const Parser = struct {
                     }
                     return grammar.Production.init(
                         self.allocator,
-                        production_id,
+                        prod_id,
+                        rule_name,
                         symbols.toOwnedSlice(),
                     );
                 },
