@@ -98,7 +98,7 @@ pub const TokenStream = struct {
 };
 
 pub const Parser = struct {
-    const ErrorSet = error {
+    const ErrorSet = error{
         InvalidRuleStart,
         InvalidToken,
     };

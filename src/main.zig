@@ -6,9 +6,9 @@ const parse = @import("parse.zig");
 
 test "parse input" {
     const input =
-    \\ S = E;
-    \\ E = E "*" B | E "+" B | B | "0" | "1";
-    \\
+        \\ S = E;
+        \\ E = E "*" B | E "+" B | B | "0" | "1";
+        \\
     ;
     var parser = parse.Parser.init(std.debug.global_allocator, input);
     const rule_set = try parser.parse();

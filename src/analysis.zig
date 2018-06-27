@@ -3,7 +3,7 @@ const std = @import("std");
 const grammar = @import("grammar.zig");
 
 fn hashUSize(x: usize) u32 {
-    const array = []usize{ x };
+    const array = []usize{x};
     return std.mem.hash_slice_u8(@sliceToBytes(array[0..array.len]));
 }
 
@@ -24,11 +24,13 @@ pub const Item = struct {
 
     const VisitedSet = std.HashMap(usize, void, hashUSize, eqlUSize);
 
-    const ErrorSet = error {
-        OutOfMemory,
-    };
+    const ErrorSet = error{OutOfMemory};
 
-    pub fn findClosure(self: *const Item, allocator: *std.mem.Allocator, rule_set: *const grammar.RuleSet) ![]Item {
+    pub fn findClosure(
+        self: *const Item,
+        allocator: *std.mem.Allocator,
+        rule_set: *const grammar.RuleSet,
+    ) ![]Item {
         var items = std.ArrayList(Item).init(allocator);
         var visited = VisitedSet.init(allocator);
         defer visited.deinit();
@@ -36,10 +38,12 @@ pub const Item = struct {
         return items.toOwnedSlice();
     }
 
-    fn findClosureHelper(self: *const Item,
-                         rule_set: *const grammar.RuleSet,
-                         items: *std.ArrayList(Item),
-                         visited: *VisitedSet) ErrorSet!void {
+    fn findClosureHelper(
+        self: *const Item,
+        rule_set: *const grammar.RuleSet,
+        items: *std.ArrayList(Item),
+        visited: *VisitedSet,
+    ) ErrorSet!void {
         if (visited.contains(self.prod_id)) {
             return;
         }

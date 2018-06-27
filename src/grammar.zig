@@ -11,10 +11,12 @@ pub const Production = struct {
     /// id - Unique ID of this production.
     /// name - Pointer to name of rule (string held not owned).
     /// symbols - Symbols of production. Production takes ownership of slice from caller.
-    pub fn init(allocator: *std.mem.Allocator,
-                id: usize,
-                name: []const u8,
-                symbols: [][]const u8) Production {
+    pub fn init(
+        allocator: *std.mem.Allocator,
+        id: usize,
+        name: []const u8,
+        symbols: [][]const u8,
+    ) Production {
         return Production{
             .allocator = allocator,
             .id = id,
@@ -65,9 +67,7 @@ pub const RuleSet = struct {
     const RuleMap = std.HashMap([]const u8, Range, std.mem.hash_slice_u8, std.mem.eql_slice_u8);
     const ProdList = std.ArrayList(Production);
 
-    const ErrorSet = error {
-        RuleDoesNotExist,
-    };
+    const ErrorSet = error{RuleDoesNotExist};
 
     start_symbol: []const u8,
     rule_map: RuleMap,
